@@ -1,9 +1,10 @@
 <script setup>
 import { GetStockList, GetConfig } from '../../wailsjs/go/main/App'
-import { EventsOn } from '../../wailsjs/runtime'
+import { EventsOff, EventsOn } from '../../wailsjs/runtime'
 import StockLightweightKlineChart from './StockLightweightKlineChart.vue'
 import { NAutoComplete, NButton, NFlex, NText, NInputGroup } from 'naive-ui'
-import { onBeforeMount, onMounted, onBeforeUnmount, ref } from 'vue'
+import { onBeforeMount, onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 
 const searchQuery = ref('')
 const selectedCode = ref('000001.SH')
@@ -15,6 +16,7 @@ const chartHeight = ref(window.innerHeight - 230)
 const recentStocks = ref([])
 const unsupportedCode = ref(false)
 let stockChangeHandler = null
+const route = useRoute()
 
 function toEastMoneyCode(code) {
   if (!code) return ''
@@ -97,6 +99,29 @@ function selectRecent(code, name) {
   addToRecent(code, name)
 }
 
+function applyStockSelection(data) {
+  const rawCode = data?.ts_code || data?.code || data?.stockCode || ''
+  const name = data?.name || data?.stockName || ''
+  const emCode = toEastMoneyCode(rawCode)
+  if (!emCode) {
+    unsupportedCode.value = true
+    return
+  }
+  unsupportedCode.value = false
+  selectedCode.value = emCode
+  selectedName.value = name
+  searchQuery.value = name || rawCode
+  addToRecent(rawCode, name)
+}
+
+function applyRouteStockSelection() {
+  if (!route.query.code) return
+  applyStockSelection({
+    ts_code: route.query.code,
+    name: route.query.name || '',
+  })
+}
+
 function updateChartHeight() {
   chartHeight.value = Math.max(400, window.innerHeight - 230)
 }
@@ -112,27 +137,21 @@ onBeforeMount(() => {
 
 onMounted(() => {
   loadRecentStocks()
+  applyRouteStockSelection()
   updateChartHeight()
   window.addEventListener('resize', updateChartHeight)
 
   stockChangeHandler = (data) => {
-    if (data && data.ts_code) {
-      const emCode = toEastMoneyCode(data.ts_code)
-      if (!emCode) {
-        unsupportedCode.value = true
-        return
-      }
-      unsupportedCode.value = false
-      selectedCode.value = emCode
-      selectedName.value = data.name || ''
-      addToRecent(data.ts_code, data.name || '')
-    }
+    applyStockSelection(data)
   }
   EventsOn('klineSelectStock', stockChangeHandler)
 })
 
+watch(() => [route.query.code, route.query.name], applyRouteStockSelection)
+
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateChartHeight)
+  EventsOff('klineSelectStock')
 })
 </script>
 

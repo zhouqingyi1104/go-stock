@@ -7,7 +7,6 @@ import (
 	"go-stock/backend/models"
 	"go-stock/backend/util"
 	"time"
-
 )
 
 type MarketStatisticApi struct {
@@ -61,6 +60,11 @@ type clsUpDownDis struct {
 }
 
 func (a *MarketStatisticApi) FetchAndSave() error {
+	now := time.Now()
+	return a.FetchAndSaveForDateTime(now.Format("2006-01-02"), now.Format("15:04"))
+}
+
+func (a *MarketStatisticApi) FetchAndSaveForDateTime(dataDate string, dataTime string) error {
 	url := "https://x-quote.cls.cn/quote/index/home?app=CailianpressWeb&os=web&sv=8.4.6"
 
 	resp, err := SharedHTTPClient.R().
@@ -85,9 +89,9 @@ func (a *MarketStatisticApi) FetchAndSave() error {
 	}
 
 	data := result.Data
-	now := time.Now()
-	dataDate := now.Format("2006-01-02")
-	dataTime := now.Format("15:04")
+	if dataTime == "" {
+		dataTime = time.Now().Format("15:04")
+	}
 
 	var shUp, shDown, szUp, szDown int
 	for _, index := range data.IndexQuote {
@@ -163,6 +167,11 @@ func (a *MarketStatisticApi) GetTodayData() []models.MarketStatistic {
 	if len(data) > 0 {
 		return data
 	}
+	return a.GetLatestAvailableData()
+}
+
+func (a *MarketStatisticApi) GetLatestAvailableData() []models.MarketStatistic {
+	var data []models.MarketStatistic
 	var latest models.MarketStatistic
 	if err := db.Dao.Order("data_date DESC, data_time DESC").First(&latest).Error; err == nil {
 		db.Dao.Where("data_date = ?", latest.DataDate).Order("data_time ASC").Find(&data)
@@ -171,10 +180,29 @@ func (a *MarketStatisticApi) GetTodayData() []models.MarketStatistic {
 }
 
 func (a *MarketStatisticApi) GetRecentDaysData(days int) []models.MarketStatistic {
-	startDate := time.Now().AddDate(0, 0, -days).Format("2006-01-02")
+	if days <= 0 {
+		days = 1
+	}
+	endDate := a.GetLatestAvailableDate()
+	if endDate == "" {
+		endDate = time.Now().Format("2006-01-02")
+	}
+	end, err := time.ParseInLocation("2006-01-02", endDate, time.Local)
+	if err != nil {
+		end = time.Now()
+	}
+	startDate := end.AddDate(0, 0, -(days - 1)).Format("2006-01-02")
 	var data []models.MarketStatistic
-	db.Dao.Where("data_date >= ?", startDate).Order("data_date ASC, data_time ASC").Find(&data)
+	db.Dao.Where("data_date >= ? AND data_date <= ?", startDate, endDate).Order("data_date ASC, data_time ASC").Find(&data)
 	return data
+}
+
+func (a *MarketStatisticApi) GetLatestAvailableDate() string {
+	var latest models.MarketStatistic
+	if err := db.Dao.Order("data_date DESC, data_time DESC").First(&latest).Error; err == nil {
+		return latest.DataDate
+	}
+	return ""
 }
 
 func (a *MarketStatisticApi) GetByDate(date string) []models.MarketStatistic {

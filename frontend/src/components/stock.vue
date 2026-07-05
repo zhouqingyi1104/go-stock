@@ -374,6 +374,7 @@ const allTableColumns = [
         h(NButton, { size: 'tiny', type: 'error', secondary: true, style: 'margin-left:4px;', onClick: () => showK(row['股票代码'], row['股票名称']) }, { default: () => '日K' }),
         h(NButton, { size: 'tiny', type: 'error', secondary: true, style: 'margin-left:4px;', onClick: () => showFenshi(row['股票代码'], row['股票名称'], row.changePercent) }, { default: () => '分时' })
       ]
+      btns.push(h(NButton, { size: 'tiny', type: 'info', secondary: true, style: 'margin-left:4px;', onClick: () => openKlineAnalysisFromFollowedStock(row['股票代码'], row['股票名称']) }, { default: () => 'K线分析' }))
       if (row['买一报价'] > 0) {
         btns.push(h(NButton, { size: 'tiny', type: 'error', secondary: true, style: 'margin-left:4px;', onClick: () => showMoney(row['股票代码'], row['股票名称']) }, { default: () => '资金' }))
       }
@@ -2713,6 +2714,25 @@ function searchStockReport(stockCode) {
       name: '个股研报',
       stockCode: stockCode,
     },
+  })
+}
+
+function openKlineAnalysisFromFollowedStock(stockCode, stockName) {
+  router.push({
+    name: 'klineAnalysis',
+    query: {
+      code: stockCode,
+      name: stockName,
+    },
+  }).then(() => {
+    nextTick(() => {
+      EventsEmit('klineSelectStock', {
+        ts_code: stockCode,
+        name: stockName,
+      })
+    })
+  }).catch(err => {
+    console.error('openKlineAnalysisFromFollowedStock error:', err)
   })
 }
 

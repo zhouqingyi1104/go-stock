@@ -334,7 +334,7 @@ const (
 )
 
 func (s *StockChangeHistoryService) GetChangeRank(days int, topN int) (*ChangeRankResult, error) {
-	startDate := time.Now().AddDate(0, 0, -days).Format("2006-01-02")
+	startDate, endDate := s.getLatestChangeDateRange(days)
 	if topN <= 0 {
 		topN = 20
 	}
@@ -350,7 +350,7 @@ func (s *StockChangeHistoryService) GetChangeRank(days int, topN int) (*ChangeRa
 	var stockRows []rankRow
 	err := db.Dao.Model(&models.StockChangeHistory{}).
 		Select("stock_name as name, stock_code as code, count(*) as total_cnt, sum(case when change_type IN ("+upChangeTypes+") then 1 else 0 end) as up_cnt, sum(case when change_type IN ("+downChangeTypes+") then 1 else 0 end) as down_cnt").
-		Where("change_date >= ?", startDate).
+		Where("change_date >= ? AND change_date <= ?", startDate, endDate).
 		Group("stock_code, stock_name").
 		Order("total_cnt DESC").
 		Limit(topN).
@@ -367,7 +367,7 @@ func (s *StockChangeHistoryService) GetChangeRank(days int, topN int) (*ChangeRa
 	var industryRows []rankRow
 	err = db.Dao.Model(&models.StockChangeHistory{}).
 		Select("industry as name, '' as code, count(*) as total_cnt, sum(case when change_type IN ("+upChangeTypes+") then 1 else 0 end) as up_cnt, sum(case when change_type IN ("+downChangeTypes+") then 1 else 0 end) as down_cnt").
-		Where("change_date >= ? AND industry != '' AND industry IS NOT NULL", startDate).
+		Where("change_date >= ? AND change_date <= ? AND industry != '' AND industry IS NOT NULL", startDate, endDate).
 		Group("industry").
 		Order("total_cnt DESC").
 		Limit(topN).
@@ -390,7 +390,7 @@ func (s *StockChangeHistoryService) GetChangeRank(days int, topN int) (*ChangeRa
 	var conceptRows []conceptRow
 	err = db.Dao.Model(&models.StockChangeHistory{}).
 		Select("concept, count(*) as cnt, sum(case when change_type IN ("+upChangeTypes+") then 1 else 0 end) as up_cnt, sum(case when change_type IN ("+downChangeTypes+") then 1 else 0 end) as down_cnt").
-		Where("change_date >= ? AND concept != '' AND concept IS NOT NULL", startDate).
+		Where("change_date >= ? AND change_date <= ? AND concept != '' AND concept IS NOT NULL", startDate, endDate).
 		Group("concept").
 		Find(&conceptRows).Error
 	if err != nil {
@@ -430,6 +430,30 @@ func (s *StockChangeHistoryService) GetChangeRank(days int, topN int) (*ChangeRa
 		TopIndustries: topIndustries,
 		TopConcepts:   topConcepts,
 	}, nil
+}
+
+func (s *StockChangeHistoryService) getLatestChangeDateRange(days int) (string, string) {
+	if days <= 0 {
+		days = 1
+	}
+	endDate := s.getLatestChangeDate()
+	if endDate == "" {
+		endDate = time.Now().Format("2006-01-02")
+	}
+	end, err := time.ParseInLocation("2006-01-02", endDate, time.Local)
+	if err != nil {
+		end = time.Now()
+	}
+	startDate := end.AddDate(0, 0, -(days - 1)).Format("2006-01-02")
+	return startDate, endDate
+}
+
+func (s *StockChangeHistoryService) getLatestChangeDate() string {
+	var latest models.StockChangeHistory
+	if err := db.Dao.Order("change_date DESC, change_time DESC").First(&latest).Error; err == nil {
+		return latest.ChangeDate
+	}
+	return ""
 }
 
 type DailyDimensionStats struct {

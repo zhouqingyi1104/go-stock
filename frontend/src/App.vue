@@ -8,8 +8,8 @@ import {
   WindowUnfullscreen,
   WindowSetTitle
 } from '../wailsjs/runtime'
-import {h, onBeforeMount, onBeforeUnmount, onMounted, ref} from "vue";
-import {RouterLink, useRouter} from 'vue-router'
+import {h, onBeforeMount, onBeforeUnmount, onMounted, ref, watch} from "vue";
+import {RouterLink, useRoute, useRouter} from 'vue-router'
 import {createDiscreteApi,darkTheme,lightTheme , NIcon, NText,NButton,dateZhCN,zhCN} from 'naive-ui'
 import {
   AlarmOutline,
@@ -42,6 +42,7 @@ import {FireFilled, MoneyCollectOutlined, NotificationFilled, StockOutlined} fro
 
 
 const router = useRouter()
+const route = useRoute()
 const loading = ref(true)
 const loadingMsg = ref("加载数据中...")
 const enableNews = ref(false)
@@ -107,6 +108,25 @@ function openKlineAnalysis() {
   activeKey.value = 'klineAnalysis'
   router.push({ name: 'klineAnalysis' })
 }
+
+function syncActiveKeyFromRoute(routeName) {
+  const routeKeyMap = {
+    stock: 'stock',
+    market: 'market',
+    klineAnalysis: 'klineAnalysis',
+    fund: 'fund',
+    agent: 'agent',
+    research: 'research',
+    cronTasks: 'research',
+    mcpServers: 'research',
+    settings: 'settings',
+    about: 'about',
+  }
+  const nextKey = routeKeyMap[routeName]
+  if (nextKey) activeKey.value = nextKey
+}
+
+watch(() => route.name, syncActiveKeyFromRoute, { immediate: true })
 
 const menuOptions = ref([
   {

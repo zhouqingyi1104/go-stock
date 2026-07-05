@@ -1,6 +1,6 @@
 <script setup>
 
-import {AnalyzeSentimentWithFreqWeight,GlobalStockIndexes,GetTodayMarketStatistic,GetRecentDaysMarketStatistic,GetDailyChangeStats,GetChangeTypeDailyStats,GetChangeRank,GetDailyDimensionStats,GetTypeStatsByDate,IsTradingTime} from "../../wailsjs/go/main/App";
+import {AnalyzeSentimentWithFreqWeight,GlobalStockIndexes,GetTodayMarketStatistic,GetRecentDaysMarketStatistic,GetDailyChangeStats,GetChangeTypeDailyStats,GetChangeRank,GetDailyDimensionStats,GetTypeStatsByDate} from "../../wailsjs/go/main/App";
 import * as echarts from "echarts";
 import {onMounted,onUnmounted, ref, watch, nextTick} from "vue";
 import _ from "lodash";
@@ -115,6 +115,7 @@ watch(showChangeRank, (newVal) => {
 })
 
 watch(changeRankDays, () => {
+  handleChart()
   handleChangeRank()
 })
 
@@ -161,22 +162,39 @@ function getIndex() {
 
 async function handleChart(){
   try {
-    const data = await GetTodayMarketStatistic()
-    if (data && data.length > 0) {
-      renderUpDownChart(data)
-      renderLimitChart(data)
+    const days = changeRankDays.value
+    const data = days === 1 ? await GetTodayMarketStatistic() : await GetRecentDaysMarketStatistic(days)
+    const chartData = days === 1 ? data : aggregateByDate(data)
+    if (chartData && chartData.length > 0) {
+      renderUpDownChart(chartData, days > 1)
+      renderLimitChart(chartData, days > 1)
+    } else {
+      clearChart(chartRef)
+      clearChart(limitChartRef)
     }
   } catch (error) {
     console.error('获取市场统计数据失败:', error)
   }
 }
 
-function renderUpDownChart(data) {
+function clearChart(chartRefVal) {
+  if (!chartRefVal.value) return
+  const chart = echarts.getInstanceByDom(chartRefVal.value)
+  if (chart) {
+    chart.clear()
+  }
+}
+
+function marketStatisticAxisLabels(data, useDateAxis) {
+  return data.map(d => useDateAxis ? d.dataDate : d.dataTime)
+}
+
+function renderUpDownChart(data, useDateAxis = false) {
   if (!chartRef.value || !data || data.length === 0) return
   
   const chart = echarts.init(chartRef.value)
   
-  const times = data.map(d => d.dataTime)
+  const times = marketStatisticAxisLabels(data, useDateAxis)
   const upCounts = data.map(d => d.upCount)
   const downCounts = data.map(d => d.downCount)
   const ratios = data.map(d => d.upRatio.toFixed(2))
@@ -367,12 +385,12 @@ function renderUpDownChart(data) {
   chart.setOption(option)
 }
 
-function renderLimitChart(data) {
+function renderLimitChart(data, useDateAxis = false) {
   if (!limitChartRef.value || !data || data.length === 0) return
   
   const chart = echarts.init(limitChartRef.value)
   
-  const times = data.map(d => d.dataTime)
+  const times = marketStatisticAxisLabels(data, useDateAxis)
   const limitUps = data.map(d => d.limitUp)
   const limitDowns = data.map(d => d.limitDown)
   const ratios = data.map(d => d.limitRatio.toFixed(2))
@@ -1455,16 +1473,6 @@ async function handleChangeRank() {
     const days = changeRankDays.value
     const result = await GetChangeRank(days, 20)
     if (result) {
-      const hasData = (result.topStocks && result.topStocks.length > 0) ||
-        (result.topIndustries && result.topIndustries.length > 0) ||
-        (result.topConcepts && result.topConcepts.length > 0)
-      if (days === 1 && !hasData) {
-        const isTrading = await IsTradingTime()
-        if (!isTrading) {
-          changeRankDays.value = 3
-          return
-        }
-      }
       const periodLabel = days === 1 ? '当日' : `近${days}日`
       if (result.topStocks && result.topStocks.length > 0) {
         renderRankChart(changeRankStockRef, `${periodLabel}异动次数最多的股票`, result.topStocks, 'stock')
@@ -1622,16 +1630,6 @@ async function handleBullBearRank() {
     const days = bullBearDays.value
     const result = await GetChangeRank(days, 20)
     if (result) {
-      const hasData = (result.topStocks && result.topStocks.length > 0) ||
-        (result.topIndustries && result.topIndustries.length > 0) ||
-        (result.topConcepts && result.topConcepts.length > 0)
-      if (days === 1 && !hasData) {
-        const isTrading = await IsTradingTime()
-        if (!isTrading) {
-          bullBearDays.value = 3
-          return
-        }
-      }
       if (result.topStocks && result.topStocks.length > 0) {
         const upStocks = [...result.topStocks].sort((a, b) => b.upCount - a.upCount).slice(0, 15)
         const downStocks = [...result.topStocks].sort((a, b) => b.downCount - a.downCount).slice(0, 15)

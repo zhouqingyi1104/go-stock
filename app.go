@@ -3311,18 +3311,39 @@ func (a *App) CheckFrequentTrading(stockCode string) map[string]any {
 }
 
 func (a *App) FetchAndSaveMarketStatistic() {
+	api := data.NewMarketStatisticApi()
 	if !isTradingTime(time.Now()) {
-		logger.SugaredLogger.Debugf("当前非交易时间，跳过市场统计数据采集")
+		latestTradingDay := a.GetLatestTradingDay()
+		if len(api.GetByDate(latestTradingDay)) == 0 {
+			logger.SugaredLogger.Infof("当前非交易时间，尝试补充最近交易日市场统计数据: %s", latestTradingDay)
+			if err := api.FetchAndSaveForDateTime(latestTradingDay, "15:00"); err != nil {
+				logger.SugaredLogger.Errorf("补充最近交易日市场统计数据失败: %v", err)
+			}
+			return
+		}
+		logger.SugaredLogger.Debugf("当前非交易时间，使用最近交易日市场统计数据: %s", latestTradingDay)
 		return
 	}
-	err := data.NewMarketStatisticApi().FetchAndSave()
+	err := api.FetchAndSave()
 	if err != nil {
 		logger.SugaredLogger.Errorf("获取市场统计数据失败: %v", err)
 	}
 }
 
 func (a *App) GetTodayMarketStatistic() []models.MarketStatistic {
-	return data.NewMarketStatisticApi().GetTodayData()
+	api := data.NewMarketStatisticApi()
+	result := api.GetTodayData()
+	if len(result) > 0 || isTradingTime(time.Now()) {
+		return result
+	}
+	latestTradingDay := a.GetLatestTradingDay()
+	if len(api.GetByDate(latestTradingDay)) == 0 {
+		logger.SugaredLogger.Infof("市场统计为空，尝试拉取最近交易日数据: %s", latestTradingDay)
+		if err := api.FetchAndSaveForDateTime(latestTradingDay, "15:00"); err != nil {
+			logger.SugaredLogger.Errorf("拉取最近交易日市场统计数据失败: %v", err)
+		}
+	}
+	return api.GetTodayData()
 }
 
 func (a *App) GetMarketStatisticByDate(date string) []models.MarketStatistic {
