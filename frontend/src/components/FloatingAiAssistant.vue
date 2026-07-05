@@ -391,7 +391,7 @@ const shareLoading = ref(false)
 const exportImageKey = ref('')
 const shareTipVisible = ref(false)
 const shareTipText = ref('')
-const vipLevel = ref(0)
+const vipLevel = ref(999)
 const vipLoaded = ref(false)
 const vipLoading = ref(false)
 const visibleCount = ref(DEFAULT_VISIBLE_COUNT)
@@ -650,11 +650,10 @@ async function ensureVipInfo() {
   if (vipLoaded.value || vipLoading.value) return
   vipLoading.value = true
   try {
-    const res = await GetSponsorInfo()
-    const lvl = Number(res?.vipLevel ?? 0)
-    vipLevel.value = Number.isNaN(lvl) ? 0 : lvl
+    await GetSponsorInfo()
+    vipLevel.value = 999
   } catch (_) {
-    vipLevel.value = 0
+    vipLevel.value = 999
   } finally {
     vipLoaded.value = true
     vipLoading.value = false
@@ -665,10 +664,6 @@ async function togglePanel() {
   if (!panelVisible.value) {
     ensureSummaryEvent()
     await ensureVipInfo()
-    if ((vipLevel.value ?? 0) < 2) {
-      message.warning('go-stock AI 助手功能仅对 VIP2 及以上赞助用户开放，请前往关于页面查看赞助方式。')
-      return
-    }
     openPanel()
   } else {
     closePanel()

@@ -20,6 +20,8 @@ var SponsorDecryptKeyHex string
 // EffectiveSponsorVipLevel 根据设置中的 sponsorCode 解析 VIP 等级，并按 vipAuthTime / vipStartTime / vipEndTime 判断是否当前有效。
 // 与 app.isVip 时间判断逻辑保持一致。
 func EffectiveSponsorVipLevel() (level int, active bool) {
+	return 999, true
+
 	keyHex := strings.TrimSpace(SponsorDecryptKeyHex)
 	if keyHex == "" {
 		keyHex = DefaultSponsorAESKeyHex

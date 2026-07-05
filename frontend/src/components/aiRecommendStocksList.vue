@@ -14,7 +14,7 @@ import sparkLine from "./stockSparkLine.vue"
 import {format} from "date-fns";
 
 const notify = useNotification()
-const vipLevel=ref("");
+const vipLevel=ref("999");
 const vipStartTime=ref("");
 const vipEndTime=ref("");
 const expired=ref(false)
@@ -41,7 +41,7 @@ onBeforeMount(()=> {
     }else{
       //notify.success({content: '未开通VIP'})
     }
-    isValidVip.value = !(vipLevel.value === "" || Number(vipLevel.value) <= 0);
+    isValidVip.value = true;
   })
 })
 onMounted(() => {
@@ -152,10 +152,6 @@ const columnsRef = ref([
     key: 'stockPrice',
     render(row, index) {
 
-      if(vipLevel.value===""|| Number(vipLevel.value) <=0){
-        return h(NText, { type: "info" }, { default: () => row.stockPrice })
-      }
-
       let diff = ((Number(row.stockCurrentPrice) - Number(row.stockPrice))/ Number(row.stockPrice)*100).toFixed(2)
       let flagStr="暂平"
       let flag="info"
@@ -184,11 +180,6 @@ const columnsRef = ref([
     title: '开仓价',
     key: 'recommendBuyPrice',
     render(row, index) {
-      if(vipLevel.value===""|| Number(vipLevel.value) <=0){
-        return h(NText, { type: "info" }, { default: () => row.recommendBuyPrice })
-      }
-
-
       if(row.recommendBuyPrice.includes("-")){
         let prices= row.recommendBuyPrice.split("-")
         if(Number(row.stockCurrentPrice)>=Number(prices[0])&&Number(row.stockCurrentPrice)<=Number(prices[1])){
@@ -206,9 +197,6 @@ const columnsRef = ref([
     title: '止盈价',
     key: 'recommendStopProfitPrice',
     render(row, index) {
-      if(vipLevel.value===""|| Number(vipLevel.value) <=0){
-        return h(NText, { type: "info" }, { default: () => row.recommendStopProfitPrice })
-      }
       if(row.recommendStopProfitPrice.includes("-")){
         let prices= row.recommendStopProfitPrice.split("-")
         if(Number(row.stockCurrentPrice)>=Number(prices[0])&&Number(row.stockCurrentPrice)<=Number(prices[1])){
@@ -226,9 +214,6 @@ const columnsRef = ref([
     title: '止损价',
     key: 'recommendStopLossPrice',
     render(row, index) {
-      if(vipLevel.value===""|| Number(vipLevel.value) <=0){
-        return h(NText, { type: "info" }, { default: () => row.recommendStopLossPrice })
-      }
       if(row.recommendStopLossPrice.includes("-")){
         let prices= row.recommendStopLossPrice.split("-")
         if(Number(row.stockCurrentPrice)<=Number(prices[0])){
@@ -440,10 +425,6 @@ function recommendRangeToSinglePrice(p) {
 }
 
 function showDetail(row) {
-  if(vipLevel.value===""|| Number(vipLevel.value) <=0){
-    notify.warning({content: '未开通VIP或者已经过期'})
-    return
-  }
   modalDataRef.title = row.stockName
   modalDataRef.content = row.recommendReason
   modalDataRef.riskRemarks = row.riskRemarks

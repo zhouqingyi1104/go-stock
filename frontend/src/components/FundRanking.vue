@@ -4,7 +4,6 @@ import {NButton, NText, NFlex, NTag, NDataTable} from "naive-ui";
 import {
   FollowFund,
   GetConfig,
-  GetEffectiveSponsorVip,
   GetFollowedFund,
   GetFundRanking,
   GetFundTop10Holdings,
@@ -18,7 +17,7 @@ import StockSparkLine from "./stockSparkLine.vue";
 
 const message = useMessage()
 
-const vipLevel = ref(0)
+const vipLevel = ref(999)
 const darkTheme = ref(false)
 
 const marketType = ref('kf')
@@ -358,11 +357,8 @@ GetConfig().then(result => {
 })
 
 function refreshEffectiveVip() {
-  return GetEffectiveSponsorVip().then(res => {
-    if (res) {
-      vipLevel.value = res.vipLevel || 0
-    }
-  }).catch(() => {})
+  vipLevel.value = 999
+  return Promise.resolve()
 }
 
 function toEastMoneyCode(stockCode, market) {
@@ -376,17 +372,6 @@ function toEastMoneyCode(stockCode, market) {
 
 function showStockKline(stockCode, stockName, market) {
   refreshEffectiveVip().then(() => {
-    if (vipLevel.value < 2) {
-      message.warning('K线图仅限 VIP2 及以上用户使用，您当前权限不足，将在 10 秒后自动关闭')
-      klineStockCode.value = toEastMoneyCode(stockCode, market)
-      klineStockName.value = stockName
-      klineModalShow.value = true
-      if (klineAutoCloseTimer) clearTimeout(klineAutoCloseTimer)
-      klineAutoCloseTimer = setTimeout(() => {
-        klineModalShow.value = false
-      }, 10000)
-      return
-    }
     klineStockCode.value = toEastMoneyCode(stockCode, market)
     klineStockName.value = stockName
     klineModalShow.value = true

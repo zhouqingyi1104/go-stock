@@ -72,6 +72,47 @@ func NewApp() *App {
 	}
 }
 
+var interactiveStockAIToolNames = map[string]struct{}{
+	"GetCurrentTime":              {},
+	"IsTradingDay":                {},
+	"GetNextTradingDay":           {},
+	"QueryStockCodeInfo":          {},
+	"GetStockInfo":                {},
+	"GetEastMoneyKLine":           {},
+	"GetEastMoneyKLineWithMA":     {},
+	"GetStockMinuteData":          {},
+	"GetStockFinancialInfo":       {},
+	"GetStockLatestFinance":       {},
+	"GetStockQtrMainFinance":      {},
+	"GetStockOrgPredict":          {},
+	"GetStockPredictSummary":      {},
+	"GetStockValuationPercentile": {},
+	"GetStockMoneyData":           {},
+	"GetStockHistoryMoneyData":    {},
+	"GetStockMarginTrading":       {},
+	"GetStockNotice":              {},
+	"QueryStockNews":              {},
+	"GetNewsListData":             {},
+	"SearchInvestor":              {},
+	"SearchReport":                {},
+	"GetSecuritiesCompanyOpinion": {},
+	"GetIndustryValuation":        {},
+	"GetStockConceptInfo":         {},
+	"GetInvestCalendar":           {},
+	"GetMarketData":               {},
+	"GlobalStockIndexesReadable":  {},
+}
+
+func interactiveStockAITools(allTools []data.Tool) []data.Tool {
+	selected := make([]data.Tool, 0, len(interactiveStockAIToolNames))
+	for _, tool := range allTools {
+		if _, ok := interactiveStockAIToolNames[tool.Function.Name]; ok {
+			selected = append(selected, tool)
+		}
+	}
+	return selected
+}
+
 func (a *App) setCronEntry(key string, id cron.EntryID) {
 	a.cronEntrysMu.Lock()
 	a.cronEntrys[key] = id
@@ -92,7 +133,20 @@ func (a *App) removeCronEntry(key string) {
 }
 
 func (a *App) GetSponsorInfo() map[string]any {
-	return a.SponsorInfo
+	info := map[string]any{
+		"vipLevel":     "999",
+		"vipStartTime": "2000-01-01 00:00:00",
+		"vipEndTime":   "2099-12-31 23:59:59",
+		"vipAuthTime":  "2000-01-01 00:00:00",
+	}
+	for k, v := range a.SponsorInfo {
+		info[k] = v
+	}
+	info["vipLevel"] = "999"
+	info["vipStartTime"] = "2000-01-01 00:00:00"
+	info["vipEndTime"] = "2099-12-31 23:59:59"
+	info["vipAuthTime"] = "2000-01-01 00:00:00"
+	return info
 }
 
 // GetEffectiveSponsorVip 从本地配置解密赞助信息并判断当前是否在 VIP 有效期内（与 ai-assistant-web / data.EffectiveSponsorVipLevel 一致）。
@@ -262,6 +316,12 @@ func (a *App) CheckSponsorCode(sponsorCode string) map[string]any {
 }
 
 func (a *App) CheckUpdate(flag int) {
+	logger.SugaredLogger.Info("software update check skipped: updater is disabled")
+	if flag == 1 && a.ctx != nil {
+		go runtime.EventsEmit(a.ctx, "warnMsg", "软件自动更新已禁用")
+	}
+	return
+
 	sponsorCode := strutil.Trim(a.GetConfig().SponsorCode)
 	if sponsorCode != "" {
 		encrypted, err := hex.DecodeString(sponsorCode)
@@ -866,17 +926,12 @@ func (a *App) domReady(ctx context.Context) {
 	}()
 	//检查新版本
 	go func() {
-		a.CheckUpdate(0)
 		go a.CheckStockBaseInfo(a.ctx)
 		go syncAllStockInfo(a.ctx)
 
 		a.cron.AddFunc("0 0 2 * * *", func() {
 			logger.SugaredLogger.Errorf("Checking for updates...")
 			a.CheckStockBaseInfo(a.ctx)
-		})
-		a.cron.AddFunc("30 05 8,12,20 * * *", func() {
-			logger.SugaredLogger.Errorf("Checking for updates...")
-			a.CheckUpdate(0)
 		})
 		a.cron.AddFunc("30 05 8,12,20 * * *", func() {
 			syncAllStockInfo(a.ctx)
@@ -1930,7 +1985,9 @@ func (a *App) NewChatStream(stock, stockCode, question string, aiConfigId int, s
 	}()
 	var msgs <-chan map[string]any
 	if enableTools {
-		msgs = data.NewDeepSeekOpenAi(a.ctx, aiConfigId).NewChatStream(stock, stockCode, question, sysPromptId, a.AiTools, think)
+		tools := interactiveStockAITools(a.AiTools)
+		logger.SugaredLogger.Infof("NewChatStream selected %d/%d focused stock AI tools", len(tools), len(a.AiTools))
+		msgs = data.NewDeepSeekOpenAi(a.ctx, aiConfigId).NewChatStream(stock, stockCode, question, sysPromptId, tools, think)
 	} else {
 		msgs = data.NewDeepSeekOpenAi(a.ctx, aiConfigId).NewChatStream(stock, stockCode, question, sysPromptId, []data.Tool{}, think)
 	}

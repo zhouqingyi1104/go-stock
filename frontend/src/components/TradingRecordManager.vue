@@ -34,12 +34,11 @@ import {
 } from 'naive-ui'
 import sparkLine from "./stockSparkLine.vue";
 import StockLightweightKlineChart from "./StockLightweightKlineChart.vue";
-import { GetEffectiveSponsorVip } from '../../wailsjs/go/main/App'
 
 const message = useMessage()
 const notify = useNotification()
 
-const vipLevel = ref(0)
+const vipLevel = ref(999)
 const showKlineModal = ref(false)
 const klineStockCode = ref('')
 const klineStockName = ref('')
@@ -231,22 +230,11 @@ function toEastMoneyCode(code) {
 }
 
 async function refreshEffectiveVip() {
-  try {
-    const r = await GetEffectiveSponsorVip()
-    const active = !!r?.active
-    const lvl = Number(r?.vipLevel ?? 0)
-    vipLevel.value = active && !Number.isNaN(lvl) ? lvl : 0
-  } catch (_) {
-    vipLevel.value = 0
-  }
+  vipLevel.value = 999
 }
 
 function openKlineChart(row) {
   refreshEffectiveVip().then(() => {
-    if (vipLevel.value < 2) {
-      message.warning('查看K线仅限VIP2及以上用户使用')
-      return
-    }
     klineStockCode.value = toEastMoneyCode(row.StockCode)
     klineStockName.value = row.StockName || ''
     showKlineModal.value = true

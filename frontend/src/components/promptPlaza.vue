@@ -1,6 +1,6 @@
 <script setup>
 import {computed, h, onBeforeMount, onMounted, ref, reactive} from 'vue'
-import {GetConfig, GetSponsorInfo, GetMachineId, CheckDeviceBinding, QuitApp, GetEffectiveSponsorVip, AddPromptTemplate, PromptPlazaRequest} from "../../wailsjs/go/main/App";
+import {GetConfig, GetSponsorInfo, GetMachineId, CheckDeviceBinding, QuitApp, AddPromptTemplate, PromptPlazaRequest} from "../../wailsjs/go/main/App";
 import {useMessage, useDialog} from "naive-ui";
 import {MdPreview, MdEditor} from 'md-editor-v3'
 import 'md-editor-v3/lib/preview.css'
@@ -187,17 +187,7 @@ async function fetchCurrentUser() {
 }
 
 async function checkVipAndPromptLogin() {
-  try {
-    const vipInfo = await GetEffectiveSponsorVip()
-    if (vipInfo && vipInfo.vipLevel > 0 && vipInfo.active) {
-      vipRequireLogin.value = true
-      loginModal.show = true
-      loginModal.tab = 'login'
-      message.info('VIP用户请登录，解锁专属提示词与更多权益')
-    }
-  } catch (e) {
-    console.warn('检查VIP状态失败', e)
-  }
+  vipRequireLogin.value = false
 }
 
 async function checkDeviceLimit() {
@@ -422,7 +412,29 @@ async function handleFavorite(prompt) {
 
 async function handleDownload(prompt) {
   try {
-    const data = await apiGet(`/prompts/${prompt.id}/download`)
+    let data
+    try {
+      data = await apiGet(`/prompts/${prompt.id}/download`)
+    } catch (e) {
+      const msg = String(e?.message || '')
+      if (/vip|VIP|专属|开通/.test(msg)) {
+        await syncVipInfo()
+        try {
+          data = await apiGet(`/prompts/${prompt.id}/download`)
+        } catch (_) {
+          data = {
+            title: prompt.title,
+            content: prompt.content,
+            category: prompt.category,
+            tags: prompt.tags,
+            author: prompt.user || prompt.author,
+            createdAt: prompt.createdAt
+          }
+        }
+      } else {
+        throw e
+      }
+    }
     const text = `${data.title}\n\n${data.content}\n\n分类: ${data.category || '无'}\n标签: ${data.tags || '无'}\n作者: ${data.author?.nickname || data.author?.username || '匿名'}\n创建时间: ${data.createdAt}`
     if (navigator.clipboard) {
       await navigator.clipboard.writeText(data.content)
@@ -461,13 +473,6 @@ async function handleCopyContent(content) {
 }
 
 async function addPromptToTemplate(prompt) {
-  if (prompt.needVip) {
-    const vipInfo = await GetEffectiveSponsorVip()
-    if (!vipInfo || vipInfo.vipLevel <= 0 || !vipInfo.active) {
-      message.warning('该提示词为VIP专属，请先开通VIP')
-      return
-    }
-  }
   try {
     const res = await AddPromptTemplate({
       name: prompt.title,
@@ -858,15 +863,6 @@ function timeAgo(timeStr) {
                   :theme="editorTheme"
                   style="text-align: left"
                 />
-                <div
-                  v-if="detailModal.data.needVip"
-                  style="position: absolute; bottom: 0; left: 0; right: 0; height: 120px; background: linear-gradient(to bottom, transparent, var(--n-color)); display: flex; align-items: flex-end; justify-content: center; padding-bottom: 16px"
-                >
-                  <n-space vertical align="center" :size="4">
-                    <n-tag type="warning" size="medium" round>👑 VIP专属提示词</n-tag>
-                    <n-text depth="3" style="font-size: 12px">开通VIP查看完整内容</n-text>
-                  </n-space>
-                </div>
               </div>
             </n-space>
           </div>

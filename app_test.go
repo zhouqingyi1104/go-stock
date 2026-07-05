@@ -101,6 +101,39 @@ func TestGetAiRecommendStocksList(t *testing.T) {
 	logger.SugaredLogger.Infof("content:%s", content)
 }
 
+func TestInteractiveStockAIToolsUseSmallFocusedSubset(t *testing.T) {
+	allTools := []data.Tool{
+		{Function: data.ToolFunction{Name: "GetCurrentTime"}},
+		{Function: data.ToolFunction{Name: "QueryStockCodeInfo"}},
+		{Function: data.ToolFunction{Name: "GetStockInfo"}},
+		{Function: data.ToolFunction{Name: "GetEastMoneyKLine"}},
+		{Function: data.ToolFunction{Name: "QueryStockNews"}},
+		{Function: data.ToolFunction{Name: "GetStockMoneyData"}},
+		{Function: data.ToolFunction{Name: "GetFundInfo"}},
+		{Function: data.ToolFunction{Name: "SendToDingDing"}},
+	}
+
+	selected := interactiveStockAITools(allTools)
+	selectedNames := map[string]bool{}
+	for _, tool := range selected {
+		selectedNames[tool.Function.Name] = true
+	}
+
+	if len(selected) >= len(allTools) {
+		t.Fatalf("expected focused stock AI tool subset, got %d of %d tools", len(selected), len(allTools))
+	}
+	for _, name := range []string{"GetCurrentTime", "QueryStockCodeInfo", "GetStockInfo", "GetEastMoneyKLine", "QueryStockNews", "GetStockMoneyData"} {
+		if !selectedNames[name] {
+			t.Fatalf("expected stock AI tool %s to be selected; got %#v", name, selectedNames)
+		}
+	}
+	for _, name := range []string{"GetFundInfo", "SendToDingDing"} {
+		if selectedNames[name] {
+			t.Fatalf("expected unrelated tool %s to be excluded; got %#v", name, selectedNames)
+		}
+	}
+}
+
 func TestSummaryStockNews(t *testing.T) {
 	db.Init("./data/stock.db")
 	question := "分析今日的市场行情走势是否和券商的观点一致"
