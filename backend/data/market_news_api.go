@@ -1,6 +1,8 @@
 package data
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"go-stock/backend/db"
@@ -8,6 +10,7 @@ import (
 	"go-stock/backend/models"
 	"go-stock/backend/util"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -1159,16 +1162,22 @@ func (m MarketNewsApi) InvestCalendar(yearMonth string) []any {
 	}
 
 	url := "https://app.jiuyangongshe.com/jystock-app/api/v1/timeline/list"
-	resp, err := SharedHTTPClient.SetTimeout(time.Duration(30)*time.Second).R().
+	timestamp := time.Now().UnixMilli()
+	req := SharedHTTPClient.SetTimeout(time.Duration(30)*time.Second).R().
 		SetHeader("Host", "app.jiuyangongshe.com").
 		SetHeader("Origin", "https://www.jiuyangongshe.com").
 		SetHeader("Referer", "https://www.jiuyangongshe.com/").
 		SetHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0").
 		SetHeader("Content-Type", "application/json").
-		SetHeader("token", "1cc6380a05c652b922b3d85124c85473").
 		SetHeader("platform", "3").
-		SetHeader("Cookie", "SESSION=NDZkNDU2ODYtODEwYi00ZGZkLWEyY2ItNjgxYzY4ZWMzZDEy").
-		SetHeader("timestamp", strconv.FormatInt(time.Now().UnixMilli(), 10)).
+		SetHeader("timestamp", strconv.FormatInt(timestamp, 10))
+	if token := jiuyangongsheToken(timestamp); token != "" {
+		req.SetHeader("token", token)
+	}
+	if cookie := jiuyangongsheCookie(); cookie != "" {
+		req.SetHeader("Cookie", cookie)
+	}
+	resp, err := req.
 		SetBody(map[string]string{
 			"date":  yearMonth,
 			"grade": "0",
@@ -1176,12 +1185,16 @@ func (m MarketNewsApi) InvestCalendar(yearMonth string) []any {
 		Post(url)
 	if err != nil {
 		logger.SugaredLogger.Errorf("InvestCalendar err:%s", err.Error())
-		return []any{}
+		return clsCalendarToInvestTimeline(m.ClsCalendar(), yearMonth)
 	}
-	//logger.SugaredLogger.Infof("InvestCalendar:%s", resp.Body())
-	respMap := map[string]any{}
-	err = json.Unmarshal(resp.Body(), &respMap)
-	return respMap["data"].([]any)
+	items, msg := parseInvestCalendarData(resp.Body())
+	if len(items) > 0 {
+		return items
+	}
+	if msg != "" {
+		logger.SugaredLogger.Warnf("InvestCalendar source unavailable: %s", msg)
+	}
+	return clsCalendarToInvestTimeline(m.ClsCalendar(), yearMonth)
 
 }
 
@@ -1199,7 +1212,110 @@ func (m MarketNewsApi) ClsCalendar() []any {
 	}
 	respMap := map[string]any{}
 	err = json.Unmarshal(resp.Body(), &respMap)
-	return respMap["data"].([]any)
+	if err != nil {
+		logger.SugaredLogger.Errorf("ClsCalendar json err:%s", err.Error())
+		return []any{}
+	}
+	data, ok := respMap["data"].([]any)
+	if !ok {
+		return []any{}
+	}
+	return data
+}
+
+func jiuyangongsheToken(timestamp int64) string {
+	if token := strings.TrimSpace(os.Getenv("JIUYANGONGSHE_TOKEN")); token != "" {
+		return token
+	}
+	sum := md5.Sum([]byte("Uu0KfOB8iUP69d3c:" + strconv.FormatInt(timestamp, 10)))
+	return hex.EncodeToString(sum[:])
+}
+
+func jiuyangongsheCookie() string {
+	if cookie := strings.TrimSpace(os.Getenv("JIUYANGONGSHE_COOKIE")); cookie != "" {
+		return cookie
+	}
+	if session := strings.TrimSpace(os.Getenv("JIUYANGONGSHE_SESSION")); session != "" {
+		return "SESSION=" + session
+	}
+	return "SESSION=NDZkNDU2ODYtODEwYi00ZGZkLWEyY2ItNjgxYzY4ZWMzZDEy"
+}
+
+func parseInvestCalendarData(body []byte) ([]any, string) {
+	respMap := map[string]any{}
+	if err := json.Unmarshal(body, &respMap); err != nil {
+		return []any{}, err.Error()
+	}
+	if data, ok := respMap["data"].([]any); ok {
+		return data, ""
+	}
+	if msg, ok := respMap["msg"].(string); ok && strings.TrimSpace(msg) != "" {
+		return []any{}, msg
+	}
+	return []any{}, "missing data"
+}
+
+func clsCalendarToInvestTimeline(clsList []any, yearMonth string) []any {
+	yearMonth = strings.TrimSpace(yearMonth)
+	result := make([]any, 0, len(clsList))
+	for _, rawDay := range clsList {
+		day, ok := rawDay.(map[string]any)
+		if !ok {
+			continue
+		}
+		date, _ := day["calendar_day"].(string)
+		if date == "" || (yearMonth != "" && !strings.HasPrefix(date, yearMonth)) {
+			continue
+		}
+		items, ok := day["items"].([]any)
+		if !ok || len(items) == 0 {
+			continue
+		}
+		list := make([]any, 0, len(items))
+		for idx, rawItem := range items {
+			item, ok := rawItem.(map[string]any)
+			if !ok {
+				continue
+			}
+			title, _ := item["title"].(string)
+			if strings.TrimSpace(title) == "" {
+				continue
+			}
+			articleID := item["id"]
+			if articleID == nil {
+				articleID = fmt.Sprintf("%s-%d", date, idx+1)
+			}
+			list = append(list, map[string]any{
+				"article_id": articleID,
+				"title":      title,
+				"like_count": calendarItemStar(item),
+			})
+		}
+		if len(list) == 0 {
+			continue
+		}
+		result = append(result, map[string]any{
+			"date": date,
+			"list": list,
+		})
+	}
+	return result
+}
+
+func calendarItemStar(item map[string]any) int {
+	if event, ok := item["event"].(map[string]any); ok {
+		star, _ := convertor.ToInt(event["star"])
+		if star > 0 {
+			return int(star)
+		}
+	}
+	if economic, ok := item["economic"].(map[string]any); ok {
+		star, _ := convertor.ToInt(economic["star"])
+		if star > 0 {
+			return int(star)
+		}
+	}
+	return 0
 }
 
 func (m MarketNewsApi) GetGDP() *models.GDPResp {
