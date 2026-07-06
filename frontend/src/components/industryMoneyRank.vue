@@ -1,10 +1,15 @@
 <script setup>
 
-import {CaretDown, CaretUp, RefreshCircleOutline} from "@vicons/ionicons5";
-import {NText,useMessage} from "naive-ui";
-import {onBeforeUnmount, onMounted, onUnmounted, ref} from "vue";
+import {CaretDown, CaretUp} from "@vicons/ionicons5";
+import {useMessage} from "naive-ui";
+import {computed, onBeforeUnmount, onMounted, ref} from "vue";
 import {GetIndustryMoneyRankSina} from "../../wailsjs/go/main/App";
 import KLineChart from "./KLineChart.vue";
+import {
+  INDUSTRY_MONEY_RANK_SORT_FIELDS,
+  getNextIndustryMoneyRankSortState,
+  sortIndustryMoneyRanks,
+} from "./market/industryMoneyRankSort.mjs";
 
 const props = defineProps({
   headerTitle: {
@@ -24,6 +29,11 @@ const message = useMessage()
 const dataList= ref([])
 const sort = ref(props.sort)
 const fenlei= ref(props.fenlei)
+const moneyRankSort = ref({
+  field: props.sort || INDUSTRY_MONEY_RANK_SORT_FIELDS.netAmount,
+  order: 'desc',
+})
+const sortedDataList = computed(() => sortIndustryMoneyRanks(dataList.value, moneyRankSort.value))
 
 const interval = ref(null)
 onMounted(()=>{
@@ -46,6 +56,14 @@ function GetRankData(){
     }
   })
 }
+
+function changeMoneyRankSort(field) {
+  moneyRankSort.value = getNextIndustryMoneyRankSortState(moneyRankSort.value, field)
+}
+
+function isMoneyRankSorted(field, order) {
+  return moneyRankSort.value.field === field && moneyRankSort.value.order === order
+}
 </script>
 
 <template>
@@ -53,19 +71,43 @@ function GetRankData(){
     <n-thead>
       <n-tr>
         <n-th>板块名称</n-th>
-        <n-th>涨跌幅</n-th>
-        <n-th>流入资金/万</n-th>
-        <n-th>流出资金/万</n-th>
-        <n-th>净流入/万<n-icon v-if="sort==='0'" :component="CaretDown"/><n-icon  v-if="sort==='1'" :component="CaretUp"/></n-th>
-        <n-th>净流入率</n-th>
+        <n-th class="sortable-th" @click="changeMoneyRankSort(INDUSTRY_MONEY_RANK_SORT_FIELDS.avgChange)">涨跌幅
+          <n-icon v-if="isMoneyRankSorted(INDUSTRY_MONEY_RANK_SORT_FIELDS.avgChange, 'desc')" :component="CaretDown"/>
+          <n-icon v-if="isMoneyRankSorted(INDUSTRY_MONEY_RANK_SORT_FIELDS.avgChange, 'asc')" :component="CaretUp"/>
+        </n-th>
+        <n-th class="sortable-th" @click="changeMoneyRankSort(INDUSTRY_MONEY_RANK_SORT_FIELDS.inAmount)">流入资金/万
+          <n-icon v-if="isMoneyRankSorted(INDUSTRY_MONEY_RANK_SORT_FIELDS.inAmount, 'desc')" :component="CaretDown"/>
+          <n-icon v-if="isMoneyRankSorted(INDUSTRY_MONEY_RANK_SORT_FIELDS.inAmount, 'asc')" :component="CaretUp"/>
+        </n-th>
+        <n-th class="sortable-th" @click="changeMoneyRankSort(INDUSTRY_MONEY_RANK_SORT_FIELDS.outAmount)">流出资金/万
+          <n-icon v-if="isMoneyRankSorted(INDUSTRY_MONEY_RANK_SORT_FIELDS.outAmount, 'desc')" :component="CaretDown"/>
+          <n-icon v-if="isMoneyRankSorted(INDUSTRY_MONEY_RANK_SORT_FIELDS.outAmount, 'asc')" :component="CaretUp"/>
+        </n-th>
+        <n-th class="sortable-th" @click="changeMoneyRankSort(INDUSTRY_MONEY_RANK_SORT_FIELDS.netAmount)">净流入/万
+          <n-icon v-if="isMoneyRankSorted(INDUSTRY_MONEY_RANK_SORT_FIELDS.netAmount, 'desc')" :component="CaretDown"/>
+          <n-icon v-if="isMoneyRankSorted(INDUSTRY_MONEY_RANK_SORT_FIELDS.netAmount, 'asc')" :component="CaretUp"/>
+        </n-th>
+        <n-th class="sortable-th" @click="changeMoneyRankSort(INDUSTRY_MONEY_RANK_SORT_FIELDS.ratioAmount)">净流入率
+          <n-icon v-if="isMoneyRankSorted(INDUSTRY_MONEY_RANK_SORT_FIELDS.ratioAmount, 'desc')" :component="CaretDown"/>
+          <n-icon v-if="isMoneyRankSorted(INDUSTRY_MONEY_RANK_SORT_FIELDS.ratioAmount, 'asc')" :component="CaretUp"/>
+        </n-th>
         <n-th>领涨股</n-th>
-        <n-th>涨跌幅</n-th>
-        <n-th>最新价</n-th>
-        <n-th>净流入率</n-th>
+        <n-th class="sortable-th" @click="changeMoneyRankSort(INDUSTRY_MONEY_RANK_SORT_FIELDS.leaderChange)">涨跌幅
+          <n-icon v-if="isMoneyRankSorted(INDUSTRY_MONEY_RANK_SORT_FIELDS.leaderChange, 'desc')" :component="CaretDown"/>
+          <n-icon v-if="isMoneyRankSorted(INDUSTRY_MONEY_RANK_SORT_FIELDS.leaderChange, 'asc')" :component="CaretUp"/>
+        </n-th>
+        <n-th class="sortable-th" @click="changeMoneyRankSort(INDUSTRY_MONEY_RANK_SORT_FIELDS.leaderTrade)">最新价
+          <n-icon v-if="isMoneyRankSorted(INDUSTRY_MONEY_RANK_SORT_FIELDS.leaderTrade, 'desc')" :component="CaretDown"/>
+          <n-icon v-if="isMoneyRankSorted(INDUSTRY_MONEY_RANK_SORT_FIELDS.leaderTrade, 'asc')" :component="CaretUp"/>
+        </n-th>
+        <n-th class="sortable-th" @click="changeMoneyRankSort(INDUSTRY_MONEY_RANK_SORT_FIELDS.leaderRatio)">净流入率
+          <n-icon v-if="isMoneyRankSorted(INDUSTRY_MONEY_RANK_SORT_FIELDS.leaderRatio, 'desc')" :component="CaretDown"/>
+          <n-icon v-if="isMoneyRankSorted(INDUSTRY_MONEY_RANK_SORT_FIELDS.leaderRatio, 'asc')" :component="CaretUp"/>
+        </n-th>
       </n-tr>
     </n-thead>
     <n-tbody>
-      <n-tr v-for="item in dataList" :key="item.category">
+      <n-tr v-for="item in sortedDataList" :key="item.category">
         <n-td><n-tag :bordered=false type="info">{{item.name}}</n-tag></n-td>
         <n-td> <n-text :type="item.avg_changeratio>0?'error':'success'">{{(item.avg_changeratio*100).toFixed(2)}}%</n-text></n-td>
         <n-td><n-text type="info">{{(item.inamount/10000).toFixed(2)}}</n-text></n-td>
@@ -90,5 +132,8 @@ function GetRankData(){
 </template>
 
 <style scoped>
-
+.sortable-th {
+  cursor: pointer;
+  user-select: none;
+}
 </style>
