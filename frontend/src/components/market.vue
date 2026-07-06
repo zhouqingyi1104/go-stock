@@ -40,6 +40,11 @@ import ClsCalendarTimeLine from "./ClsCalendarTimeLine.vue";
 import Stockhotmap from "./stockhotmap.vue";
 import BKFundFlowChart from "./bkFundFlowChart.vue";
 import ConceptFundFlowChart from "./conceptFundFlowChart.vue";
+import {
+  INDUSTRY_RANK_SORT_FIELDS,
+  getNextIndustryRankSortState,
+  sortIndustryRanks,
+} from "./market/industryRankSort.mjs";
 
 const route = useRoute()
 const icon = ref('https://raw.githubusercontent.com/ArvinLovegood/go-stock/master/build/appicon.png');
@@ -79,6 +84,8 @@ const userPromptOptions = ref([])
 const promptTemplates = ref([])
 const industryRanks = ref([])
 const sort = ref("0")
+const industryRankSort = ref({ field: INDUSTRY_RANK_SORT_FIELDS.daily, order: 'desc' })
+const sortedIndustryRanks = computed(() => sortIndustryRanks(industryRanks.value, industryRankSort.value))
 const nowTab = ref("市场快讯")
 const indexInterval = ref(null)
 const indexIndustryRank = ref(null)
@@ -238,13 +245,16 @@ function getAreaName(code) {
   }
 }
 
-function changeIndustryRankSort() {
-  if (sort.value === "0") {
-    sort.value = "1"
-  } else {
-    sort.value = "0"
+function changeIndustryRankSort(field = INDUSTRY_RANK_SORT_FIELDS.daily) {
+  industryRankSort.value = getNextIndustryRankSortState(industryRankSort.value, field)
+  sort.value = industryRankSort.value.order === 'desc' ? "0" : "1"
+  if (field === INDUSTRY_RANK_SORT_FIELDS.daily) {
+    industryRank()
   }
-  industryRank()
+}
+
+function isIndustryRankSorted(field, order) {
+  return industryRankSort.value.field === field && industryRankSort.value.order === order
 }
 
 function industryRank() {
@@ -252,7 +262,7 @@ function industryRank() {
   GetIndustryRank(sort.value, 150).then(result => {
     if (result.length > 0) {
       //console.log(result)
-      industryRanks.value = result
+      industryRanks.value = sortIndustryRanks(result, industryRankSort.value)
     } else {
       message.info("暂无数据")
     }
@@ -590,19 +600,25 @@ function ReFlesh(source) {
               <n-thead>
                 <n-tr>
                   <n-th>行业名称</n-th>
-                  <n-th @click="changeIndustryRankSort">行业涨幅
-                    <n-icon v-if="sort==='0'" :component="CaretDown"/>
-                    <n-icon v-if="sort==='1'" :component="CaretUp"/>
+                  <n-th style="cursor: pointer" @click="changeIndustryRankSort(INDUSTRY_RANK_SORT_FIELDS.daily)">行业涨幅
+                    <n-icon v-if="isIndustryRankSorted(INDUSTRY_RANK_SORT_FIELDS.daily, 'desc')" :component="CaretDown"/>
+                    <n-icon v-if="isIndustryRankSorted(INDUSTRY_RANK_SORT_FIELDS.daily, 'asc')" :component="CaretUp"/>
                   </n-th>
-                  <n-th>行业5日涨幅</n-th>
-                  <n-th>行业20日涨幅</n-th>
+                  <n-th style="cursor: pointer" @click="changeIndustryRankSort(INDUSTRY_RANK_SORT_FIELDS.fiveDay)">行业5日涨幅
+                    <n-icon v-if="isIndustryRankSorted(INDUSTRY_RANK_SORT_FIELDS.fiveDay, 'desc')" :component="CaretDown"/>
+                    <n-icon v-if="isIndustryRankSorted(INDUSTRY_RANK_SORT_FIELDS.fiveDay, 'asc')" :component="CaretUp"/>
+                  </n-th>
+                  <n-th style="cursor: pointer" @click="changeIndustryRankSort(INDUSTRY_RANK_SORT_FIELDS.twentyDay)">行业20日涨幅
+                    <n-icon v-if="isIndustryRankSorted(INDUSTRY_RANK_SORT_FIELDS.twentyDay, 'desc')" :component="CaretDown"/>
+                    <n-icon v-if="isIndustryRankSorted(INDUSTRY_RANK_SORT_FIELDS.twentyDay, 'asc')" :component="CaretUp"/>
+                  </n-th>
                   <n-th>领涨股</n-th>
                   <n-th>涨幅</n-th>
                   <n-th>最新价</n-th>
                 </n-tr>
               </n-thead>
               <n-tbody>
-                <n-tr v-for="item in industryRanks" :key="item.bd_code">
+                <n-tr v-for="item in sortedIndustryRanks" :key="item.bd_code">
                   <n-td>
                     <n-tag :bordered=false type="info">{{ item.bd_name }}</n-tag>
                   </n-td>
@@ -633,19 +649,25 @@ function ReFlesh(source) {
               <n-thead>
                 <n-tr>
                   <n-th>行业名称</n-th>
-                  <n-th @click="changeIndustryRankSort">行业涨幅
-                    <n-icon v-if="sort==='0'" :component="CaretDown"/>
-                    <n-icon v-if="sort==='1'" :component="CaretUp"/>
+                  <n-th style="cursor: pointer" @click="changeIndustryRankSort(INDUSTRY_RANK_SORT_FIELDS.daily)">行业涨幅
+                    <n-icon v-if="isIndustryRankSorted(INDUSTRY_RANK_SORT_FIELDS.daily, 'desc')" :component="CaretDown"/>
+                    <n-icon v-if="isIndustryRankSorted(INDUSTRY_RANK_SORT_FIELDS.daily, 'asc')" :component="CaretUp"/>
                   </n-th>
-                  <n-th>行业5日涨幅</n-th>
-                  <n-th>行业20日涨幅</n-th>
+                  <n-th style="cursor: pointer" @click="changeIndustryRankSort(INDUSTRY_RANK_SORT_FIELDS.fiveDay)">行业5日涨幅
+                    <n-icon v-if="isIndustryRankSorted(INDUSTRY_RANK_SORT_FIELDS.fiveDay, 'desc')" :component="CaretDown"/>
+                    <n-icon v-if="isIndustryRankSorted(INDUSTRY_RANK_SORT_FIELDS.fiveDay, 'asc')" :component="CaretUp"/>
+                  </n-th>
+                  <n-th style="cursor: pointer" @click="changeIndustryRankSort(INDUSTRY_RANK_SORT_FIELDS.twentyDay)">行业20日涨幅
+                    <n-icon v-if="isIndustryRankSorted(INDUSTRY_RANK_SORT_FIELDS.twentyDay, 'desc')" :component="CaretDown"/>
+                    <n-icon v-if="isIndustryRankSorted(INDUSTRY_RANK_SORT_FIELDS.twentyDay, 'asc')" :component="CaretUp"/>
+                  </n-th>
                   <n-th>领涨股</n-th>
                   <n-th>涨幅</n-th>
                   <n-th>最新价</n-th>
                 </n-tr>
               </n-thead>
               <n-tbody>
-                <n-tr v-for="item in industryRanks" :key="item.bd_code">
+                <n-tr v-for="item in sortedIndustryRanks" :key="item.bd_code">
                   <n-td>
                     <n-tag :bordered=false type="info">{{ item.bd_name }}</n-tag>
                   </n-td>
