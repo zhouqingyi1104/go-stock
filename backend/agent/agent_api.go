@@ -322,6 +322,12 @@ func runReact(ctx context.Context, stockAiAgent *StockAiAgent, messages []*schem
 		}()
 
 		var fullResponse strings.Builder
+		var reasoningFallback strings.Builder
+		srTotalChunks := 0
+		srContentChunks := 0
+		srReasoningChunks := 0
+		srSentContentMsgs := 0
+		var srLastFinishReason string
 		for {
 			msg, err := sr.Recv()
 			if err != nil {
@@ -335,14 +341,46 @@ func runReact(ctx context.Context, stockAiAgent *StockAiAgent, messages []*schem
 				}
 				break
 			}
-			if msg != nil && msg.Content != "" {
-				fullResponse.WriteString(msg.Content)
+			if msg != nil {
+				srTotalChunks++
+				if msg.Content != "" {
+					srContentChunks++
+					fullResponse.WriteString(msg.Content)
+					// 将 Assistant 角色的 Content 直接发送到 ch。
+					// 注意：msgFuture 的流 fork 在某些场景下（推理模型+工具调用）可能丢失 Content，
+					// 因此不从 processMessageFuture 发送 Content，改由此处直接发送，确保用户能收到回复。
+					if msg.Role == schema.Assistant {
+						srSentContentMsgs++
+						safeSend(ch, &schema.Message{
+							Role:    schema.Assistant,
+							Content: msg.Content,
+						})
+					}
+				}
+				if msg.ReasoningContent != "" {
+					srReasoningChunks++
+					reasoningFallback.WriteString(msg.ReasoningContent)
+				}
+				if msg.ResponseMeta != nil && msg.ResponseMeta.FinishReason != "" {
+					srLastFinishReason = msg.ResponseMeta.FinishReason
+				}
 			}
 		}
 
+		logger.SugaredLogger.Infof("runReact sr stats: total=%d content=%d reasoning=%d sent_content_msgs=%d fullResponse_len=%d reasoningFallback_len=%d finish_reason=%s question=%q",
+			srTotalChunks, srContentChunks, srReasoningChunks, srSentContentMsgs, fullResponse.Len(), reasoningFallback.Len(), srLastFinishReason, truncate(question, 100))
+
+		// 注意：不再将 reasoning_content 回退为最终回复。reasoning_content 是模型的思考过程，
+		// 不是给用户的正式回复。如果模型只产生 reasoning_content 而没有 content，说明模型
+		// 可能在思考阶段耗尽了 token 预算（finish_reason=length），此时不应将思考过程
+		// 当作回复发送给用户或保存到多轮记忆中。
+		if fullResponse.Len() == 0 && reasoningFallback.Len() > 0 {
+			logger.SugaredLogger.Warnf("runReact: model produced only reasoning_content (len=%d) with no final content, "+
+				"will not use thinking process as reply (finish_reason=%s)", reasoningFallback.Len(), srLastFinishReason)
+		}
+
 		if fullResponse.Len() != 0 {
-			guardAgent := resolveReactAgentForGuard(stockAiAgent, stockAiAgent.thinkingMode, ctx)
-			final := enforceResponseGuard(ctx, string(AgentModeReact), question, fullResponse.String(), guardAgent, messages, agentOption, ch, stockAiAgent, stockAiAgent.thinkingMode)
+			final := fullResponse.String()
 			if memoryService != nil {
 				if err := memoryService.AddAssistantMessage(final); err != nil {
 					logger.SugaredLogger.Errorf("failed to save assistant message: %v", err)
@@ -386,7 +424,6 @@ func runPlanExecuteWithFallback(ctx context.Context, stockAiAgent *StockAiAgent,
 //   - 无 plan JSON 编码错误降级（DeepAgents 不产生 plan JSON）
 //   - 阶段检测不同：write_todos→规划、task→委派、其他工具→执行
 //   - 错误处理：记录日志并提示用户，不自动降级到 React（用户显式选择了 DeepAgents）
-//   - 仍应用 enforceResponseGuard 做数据准确性校验
 func runDeepAgents(ctx context.Context, stockAiAgent *StockAiAgent, messages []*schema.Message, ch chan *schema.Message, memoryService *ChatMemoryService, historyMessages []*schema.Message, sysPrompt string, question string) {
 	defer close(ch)
 
@@ -473,8 +510,7 @@ func runDeepAgents(ctx context.Context, stockAiAgent *StockAiAgent, messages []*
 	}
 
 	if fullResponse.Len() != 0 {
-		guardAgent := resolveReactAgentForGuard(stockAiAgent, stockAiAgent.thinkingMode, ctx)
-		final := enforceResponseGuard(ctx, string(AgentModeDeepAgents), question, fullResponse.String(), guardAgent, messages, nil, ch, stockAiAgent, stockAiAgent.thinkingMode)
+		final := fullResponse.String()
 		if memoryService != nil {
 			if err := memoryService.AddAssistantMessage(final); err != nil {
 				logger.SugaredLogger.Errorf("failed to save assistant message: %v", err)
@@ -619,8 +655,7 @@ func tryPlanExecute(ctx context.Context, stockAiAgent *StockAiAgent, messages []
 	}
 
 	if fullResponse.Len() != 0 {
-		guardAgent := resolveReactAgentForGuard(stockAiAgent, stockAiAgent.thinkingMode, ctx)
-		final := enforceResponseGuard(ctx, string(AgentModePlanExecute), question, fullResponse.String(), guardAgent, messages, nil, ch, stockAiAgent, stockAiAgent.thinkingMode)
+		final := fullResponse.String()
 		if memoryService != nil {
 			if err := memoryService.AddAssistantMessage(final); err != nil {
 				logger.SugaredLogger.Errorf("failed to save assistant message: %v", err)
@@ -792,8 +827,7 @@ func runReactWithAgent(ctx context.Context, reactAgent *react.Agent, messages []
 		}
 
 		if fullResponse.Len() != 0 {
-			guardAgent := resolveReactAgentForGuard(stockAiAgent, stockAiAgent.thinkingMode, ctx)
-			final := enforceResponseGuard(ctx, "react_fallback", question, fullResponse.String(), guardAgent, messages, agentOption, ch, stockAiAgent, stockAiAgent.thinkingMode)
+			final := fullResponse.String()
 			if memoryService != nil {
 				if err := memoryService.AddAssistantMessage(final); err != nil {
 					logger.SugaredLogger.Errorf("failed to save assistant message: %v", err)
@@ -1014,11 +1048,10 @@ func processMessageFuture(msgFuture react.MessageFuture, ch chan *schema.Message
 			}
 
 			if msg.Role == schema.Assistant && msg.Content != "" {
+				// 仅用于 [FinalAnswer] 调试日志，不发送到 ch。
+				// Content 由 runReact 的 sr 循环直接发送到 ch（msgFuture 的流 fork
+				// 在推理模型+工具调用场景下可能丢失 Content，因此不依赖此路径）。
 				contentBuilder.WriteString(msg.Content)
-				safeSend(ch, &schema.Message{
-					Role:    schema.Assistant,
-					Content: msg.Content,
-				})
 			}
 		}
 
@@ -1052,6 +1085,9 @@ func processMessageFuture(msgFuture react.MessageFuture, ch chan *schema.Message
 		if contentBuilder.Len() > 0 && len(toolCallsMap) == 0 {
 			fmt.Printf("\n[FinalAnswer]\n%s\n", contentBuilder.String())
 		}
+
+		logger.SugaredLogger.Infof("processMessageFuture stream stats: reasoning_len=%d content_len=%d tool_calls=%d tool_result=%v",
+			reasoningBuilder.Len(), contentBuilder.Len(), len(toolCallsMap), toolResult != nil)
 	}
 }
 
